@@ -23,7 +23,7 @@ class Body:
         if elasticity:
             self.elasticity = elasticity
         else:
-            self.elasticity = 0.98  # mitigates collision speed-up
+            self.elasticity = 1.0
 
     def draw(self, screen, px_per_m):
         pass
@@ -145,14 +145,22 @@ def get_screen(resolution):
 def get_simulation():
     room_dimensions = (8, 6)
     bodies = []
-    for _ in range(50):
-        pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
-        vel = (8 * (random() - 0.5), 0)
-        mass = randint(2, 15)
-        radius = mass ** (1 / 3) * 0.1
-        e = 0.98 # 0.85 + 0.14 * random()
-        bodies.append(Ball(pos, vel, mass, radius, elasticity=e))
+    # for _ in range(10):
+    #     pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
+    #     vel = (8 * (random() - 0.5), 0)
+    #     mass = randint(2, 15)
+    #     radius = mass ** (1 / 3) * 0.1
+    #     e = 0.98 # 0.85 + 0.14 * random()
+    #     bodies.append(Ball(pos, vel, mass, radius, elasticity=e))
     # bodies.append(Platform((1, 1), (2, 0.5)))
+
+    # bodies.append(Ball((4, 2), (0, 0), 50, 0.50))
+    # bodies.append(Ball((4, 4), (0, 0), 1, 0.10))
+    # bodies.append(Ball((4, 4.75), (0, 0), 50, 0.50))
+
+    n = 10
+    for i in range(n):
+        bodies.append(Ball((4, i*room_dimensions[1]/n), (0, 0), 50, room_dimensions[1]/(4*n)))
 
     return Simulation(room_dimensions, bodies)
 
@@ -164,16 +172,20 @@ def main():
 
     # Initialize pygame and the display
     screen = get_screen((800, 600))
+    fps_font = pg.font.SysFont("Segoe UI", 20)
 
-    # Initialize timing system (hard max of 600fps)
+    # Initialize timing system (hard max of 1000fps)
     ui_frame_rate = 60  # controls ui frame rate (should be left at 60)
-    sim_frame_rate = 60 * 5  # controls simulation frame rate (works well to be a multiple of 60)
+    sim_frame_rate = 60 * 10  # controls simulation frame rate (works well to be a multiple of 60)
 
     ui_time_step = 1 / ui_frame_rate
     sim_time_step = 1 / sim_frame_rate
 
     ui_timestamp = 0  # timestamp of last ui update
     sim_timestamp = 0  # timestamp of last simulation update
+
+    actual_fps_log = [0 for _ in range(sim_frame_rate)]
+    moving_average = 0
 
     clock = pg.time.Clock()
     done = False
@@ -188,14 +200,19 @@ def main():
 
             screen.fill((255, 255, 255))
             sim.draw(screen)
+            screen.blit(fps_font.render("fps: " + str(moving_average), True, (0, 0, 0)), (5, 0))
             pg.display.update()
 
         if sys_time - sim_timestamp >= sim_time_step:
-            print("Achieved a sim frame rate of " + str(int(1/(sys_time - sim_timestamp))) + "fps")
+            # calculate moving average of actual frame rate over one second
+            actual_fps_log = actual_fps_log[1:]
+            actual_fps_log.append(int(1/(sys_time - sim_timestamp)))
+            moving_average = int(sum(actual_fps_log)/sim_frame_rate)
+
             sim_timestamp = sys_time
             sim.physics_step(sim_time_step * sim_time_scale)
 
-        clock.tick(600)  # prevents max cpu usage on loop
+        clock.tick(1000)  # prevents max cpu usage on loop
 
 
 if __name__ == "__main__":
