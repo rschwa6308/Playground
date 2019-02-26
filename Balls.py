@@ -1,6 +1,6 @@
 import pygame as pg
 import pygame.gfxdraw
-from pygame import Vector2 as V2
+from pygame.math import Vector2 as V2
 
 from random import random, randint
 from time import time
@@ -77,6 +77,10 @@ class Ball(Body):
         pg.gfxdraw.filled_circle(screen, px_pos[0], px_pos[1], px_radius, self.color)
         pg.gfxdraw.aacircle(screen, px_pos[0], px_pos[1], px_radius, self.color)
 
+    def apply_gravity(self, g, time_step):
+        if self.pos.y > self.radius:        # emulates normal force (and prevents infinite tiny-bounce)
+            self.vel.y -= (g * time_step)
+
     def collide_walls(self, room_width, room_height):
         if self.pos.x < self.radius:
             self.vel.x *= -self.elasticity
@@ -138,18 +142,24 @@ def get_screen(resolution):
     return pg.display.set_mode(resolution)
 
 
-def main():
-    # Set up Simulation
+def get_simulation():
     room_dimensions = (8, 6)
     bodies = []
-    for _ in range(15):
+    for _ in range(50):
         pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
         vel = (8 * (random() - 0.5), 0)
         mass = randint(2, 15)
         radius = mass ** (1 / 3) * 0.1
-        bodies.append(Ball(pos, vel, mass, radius, elasticity=0.93))
-    bodies.append(Platform((1, 1), (2, 0.5)))
-    sim = Simulation(room_dimensions, bodies)
+        e = 0.98 # 0.85 + 0.14 * random()
+        bodies.append(Ball(pos, vel, mass, radius, elasticity=e))
+    # bodies.append(Platform((1, 1), (2, 0.5)))
+
+    return Simulation(room_dimensions, bodies)
+
+
+def main():
+    # Set up simulation
+    sim = get_simulation()
     sim_time_scale = 1.0  # adjusts speed of simulation without effecting frame rate
 
     # Initialize pygame and the display
@@ -157,7 +167,7 @@ def main():
 
     # Initialize timing system (hard max of 600fps)
     ui_frame_rate = 60  # controls ui frame rate (should be left at 60)
-    sim_frame_rate = 240  # controls simulation frame rate (works well to be a multiple of 60)
+    sim_frame_rate = 60 * 5  # controls simulation frame rate (works well to be a multiple of 60)
 
     ui_time_step = 1 / ui_frame_rate
     sim_time_step = 1 / sim_frame_rate
@@ -181,6 +191,7 @@ def main():
             pg.display.update()
 
         if sys_time - sim_timestamp >= sim_time_step:
+            print("Achieved a sim frame rate of " + str(int(1/(sys_time - sim_timestamp))) + "fps")
             sim_timestamp = sys_time
             sim.physics_step(sim_time_step * sim_time_scale)
 
