@@ -5,6 +5,7 @@ from pygame.math import Vector2 as V2
 from random import random, randint
 from time import time
 from itertools import combinations
+from math import e
 
 
 class Body:
@@ -30,6 +31,12 @@ class Body:
     def draw(self, screen, px_per_m):
         pass
 
+    def play_collision_sound(self, vel_change):
+        if self.collision_sound is not None and vel_change != 0:
+            volume = 2 / (1 + e ** (-0.2*vel_change)) - 1  # upper half of Sigmoid function
+            self.collision_sound.set_volume(volume)
+            self.collision_sound.play()
+
     def apply_vel(self, time_step):
         self.pos += self.vel * time_step
 
@@ -41,18 +48,27 @@ class Body:
 
     # should be mutual (a.collide_body(b) has the exact same effect as b.collide_body(a))
     def collide_body(self, other, time_step):
+        old_vel = V2(self.vel)
+        old_vel_other = V2(other.vel)
+
         if isinstance(self, Ball) and isinstance(other, Ball):
             if self.pos.distance_to(other.pos) < self.radius + other.radius:
+                # perform collision arithmetic
                 d = self.pos.distance_to(other.pos)
                 n = (other.pos - self.pos) / max(d, 0.000000001)
                 p = 2 * (self.vel.dot(n) - other.vel.dot(n)) / (self.mass + other.mass)
-                self.vel -= p * other.mass * n * self.elasticity  # note: not sure if this actually conserves momentum (?)
+                # note: not sure if this actually conserves momentum (?)
+                self.vel -= p * other.mass * n * self.elasticity
                 other.vel += p * self.mass * n * other.elasticity
 
                 # move balls to be externally tangent
                 desired_distance = self.radius + other.radius
                 self.pos -= n * (desired_distance - d) * other.mass / (self.mass + other.mass)
                 other.pos += n * (desired_distance - d) * self.mass / (self.mass + other.mass)
+
+                # handle collision sounds (only play louder one)
+                vel_change = max((self.vel - old_vel).length(), (other.vel - old_vel_other).length())
+                self.play_collision_sound(vel_change)
                 return True
 
         else:
@@ -83,29 +99,36 @@ class Ball(Body):
         pg.gfxdraw.aacircle(screen, px_pos[0], px_pos[1], px_radius, self.color)
 
     def apply_gravity(self, g, time_step):
-        if self.pos.y > self.radius:        # emulates normal force (and prevents infinite tiny-bounce)
+        if self.pos.y > self.radius:  # emulates normal force (and prevents infinite tiny-bounce)
             self.vel.y -= (g * time_step)
 
     def collide_walls(self, room_width, room_height):
+        old_vel = V2(self.vel)
+        hit = False
+
         if self.pos.x < self.radius:
             self.vel.x *= -self.elasticity
             self.pos.x = self.radius
-            return True
+            hit = True
         elif self.pos.x > room_width - self.radius:
             self.vel.x *= -self.elasticity
             self.pos.x = room_width - self.radius
-            return True
+            self.play_collision_sound((self.vel - old_vel).length())
+            hit = True
 
         if self.pos.y < self.radius:
             self.vel.y *= -self.elasticity
             self.pos.y = self.radius
-            return True
+            hit = True
         elif self.pos.y > room_height - self.radius:
             self.vel.y *= -self.elasticity
             self.pos.y = room_height - self.radius
-            return True
+            hit = True
 
-        return False
+        if hit:
+            self.play_collision_sound((self.vel - old_vel).length())
+
+        return hit
 
 
 class Platform(Body):
@@ -116,7 +139,8 @@ class Platform(Body):
         self.width, self.height = dimensions
 
     def draw(self, screen, px_per_m):
-        px_pos = (round(self.pos.x * px_per_m), screen.get_height() - round((self.pos.y + self.height) * px_per_m))  # flip y-axis
+        px_pos = (
+        round(self.pos.x * px_per_m), screen.get_height() - round((self.pos.y + self.height) * px_per_m))  # flip y-axis
         px_width = round(self.width * px_per_m)
         px_height = round(self.height * px_per_m)
         pg.gfxdraw.box(screen, pg.Rect(px_pos[0], px_pos[1], px_width, px_height), self.color)
@@ -140,15 +164,12 @@ class Simulation:
                 body.apply_gravity(self.g, time_step)
                 if body.collide_walls(self.room_width, self.room_height):
                     Body.collision_count += 1
-                    if body.collision_sound is not None:
-                        body.collision_sound.play()
+                    print(Body.collision_count)
 
         for body_pair in combinations(self.bodies, 2):
             if body_pair[0].collide_body(body_pair[1], time_step):
                 Body.collision_count += 1
                 print(Body.collision_count)
-                if body_pair[0].collision_sound is not None:
-                    body_pair[0].collision_sound.play()
 
         for body in self.bodies:
             if not body.fixed:
@@ -163,19 +184,19 @@ def get_screen(resolution):
 def get_simulation():
     room_dimensions = (8, 6)
     bodies = []
-    # for _ in range(10):
-    #     pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
-    #     vel = (8 * (random() - 0.5), 0)
-    #     mass = randint(2, 15)
-    #     radius = mass ** (1 / 3) * 0.1
-    #     e = 0.98 # 0.85 + 0.14 * random()
-    #     bodies.append(Ball(pos, vel, mass, radius, elasticity=e))
+    for _ in range(10):
+        pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
+        vel = (8 * (random() - 0.5), 0)
+        mass = randint(2, 15)
+        radius = mass ** (1 / 3) * 0.1
+        elas = 0.90 # 0.85 + 0.14 * random()
+        bodies.append(Ball(pos, vel, mass, radius, elasticity=elas))
     # bodies.append(Platform((1, 1), (2, 0.5)))
 
-    r = 50
-    bodies.append(Ball((4, 2), (0, 0), r, 0.50))
-    bodies.append(Ball((4, 4), (0, 0), 1, 0.10))
-    bodies.append(Ball((4, 4.75), (0, 0), r, 0.50))
+    # r = 100
+    # # bodies.append(Ball((4, 2), (0, 0), r, 0.50))
+    # bodies.append(Ball((4, 4), (0, 0), 1, 0.10))
+    # bodies.append(Ball((4, 5), (0, -1), r, 0.50))
 
     # n = 50
     # for i in range(n):
@@ -190,14 +211,13 @@ def main():
     sim_time_scale = 1.0  # adjusts speed of simulation without effecting frame rate
 
     # Initialize pygame elements and the display
-    pygame.mixer.init(22100, -16, 2, 32)        # must be called before pg.init()
+    pygame.mixer.init(22100, -16, 2, 32)  # must be called before pg.init()
     clack_sound = pg.mixer.Sound("clack.wav")
     Ball.collision_sound = clack_sound
 
     screen = get_screen((800, 600))
 
     fps_font = pg.font.SysFont("Segoe UI", 20)
-
 
     # Initialize timing system (hard max of 1000fps)
     ui_frame_rate = 60  # controls ui frame rate (should be left at 60)
@@ -231,8 +251,8 @@ def main():
         if sys_time - sim_timestamp >= sim_time_step:
             # calculate moving average of actual frame rate over one second
             actual_fps_log = actual_fps_log[1:]
-            actual_fps_log.append(int(1/(sys_time - sim_timestamp)))
-            moving_average = int(sum(actual_fps_log)/sim_frame_rate)
+            actual_fps_log.append(int(1 / (sys_time - sim_timestamp)))
+            moving_average = int(sum(actual_fps_log) / sim_frame_rate)
 
             sim_timestamp = sys_time
             sim.physics_step(sim_time_step * sim_time_scale)
