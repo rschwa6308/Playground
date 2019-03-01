@@ -33,7 +33,7 @@ class Body:
 
     def play_collision_sound(self, vel_change):
         if self.collision_sound is not None and vel_change != 0:
-            volume = 2 / (1 + e ** (-0.2*vel_change)) - 1  # upper half of Sigmoid function
+            volume = 2 / (1 + e ** (-0.2 * vel_change)) - 1  # upper half of Sigmoid function
             self.collision_sound.set_volume(volume)
             self.collision_sound.play()
 
@@ -140,7 +140,8 @@ class Platform(Body):
 
     def draw(self, screen, px_per_m):
         px_pos = (
-        round(self.pos.x * px_per_m), screen.get_height() - round((self.pos.y + self.height) * px_per_m))  # flip y-axis
+            round(self.pos.x * px_per_m),
+            screen.get_height() - round((self.pos.y + self.height) * px_per_m))  # flip y-axis
         px_width = round(self.width * px_per_m)
         px_height = round(self.height * px_per_m)
         pg.gfxdraw.box(screen, pg.Rect(px_pos[0], px_pos[1], px_width, px_height), self.color)
@@ -159,6 +160,7 @@ class Simulation:
             body.draw(screen, px_per_m)
 
     def physics_step(self, time_step):
+        # gravity and wall collisions
         for body in self.bodies:
             if not body.fixed:
                 body.apply_gravity(self.g, time_step)
@@ -166,11 +168,13 @@ class Simulation:
                     Body.collision_count += 1
                     print(Body.collision_count)
 
+        # body - body collisions
         for body_pair in combinations(self.bodies, 2):
             if body_pair[0].collide_body(body_pair[1], time_step):
                 Body.collision_count += 1
                 print(Body.collision_count)
 
+        # apply velocities
         for body in self.bodies:
             if not body.fixed:
                 body.apply_vel(time_step)
@@ -184,12 +188,13 @@ def get_screen(resolution):
 def get_simulation():
     room_dimensions = (8, 6)
     bodies = []
+
     for _ in range(10):
         pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
         vel = (8 * (random() - 0.5), 0)
         mass = randint(2, 15)
         radius = mass ** (1 / 3) * 0.1
-        elas = 0.90 # 0.85 + 0.14 * random()
+        elas = 0.90  # 0.85 + 0.14 * random()
         bodies.append(Ball(pos, vel, mass, radius, elasticity=elas))
     # bodies.append(Platform((1, 1), (2, 0.5)))
 
@@ -198,9 +203,9 @@ def get_simulation():
     # bodies.append(Ball((4, 4), (0, 0), 1, 0.10))
     # bodies.append(Ball((4, 5), (0, -1), r, 0.50))
 
-    # n = 50
+    # n = 10
     # for i in range(n):
-    #     bodies.append(Ball((4, i*room_dimensions[1]/n), (0, 0), 50, room_dimensions[1]/(4*n)))
+    #     bodies.append(Ball((4, i*room_dimensions[1]/n), (0, 0), 50, room_dimensions[1]/(4*n), elasticity=0.99))
 
     return Simulation(room_dimensions, bodies)
 
@@ -211,7 +216,7 @@ def main():
     sim_time_scale = 1.0  # adjusts speed of simulation without effecting frame rate
 
     # Initialize pygame elements and the display
-    pygame.mixer.init(22100, -16, 2, 32)  # must be called before pg.init()
+    pygame.mixer.init(22100, -16, 2, 32)  # must be called before pg.init() (last # = buffer size (latency))
     clack_sound = pg.mixer.Sound("clack.wav")
     Ball.collision_sound = clack_sound
 
