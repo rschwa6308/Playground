@@ -5,7 +5,7 @@ from pygame.math import Vector2 as V2
 from random import random, randint
 from time import time
 from itertools import combinations
-from math import e
+from math import e, copysign
 
 
 class Body:
@@ -102,7 +102,7 @@ class Ball(Body):
         if self.pos.y > self.radius:  # emulates normal force (and prevents infinite tiny-bounce)
             self.vel.y -= (g * time_step)
 
-    def collide_walls(self, room_width, room_height):
+    def collide_walls(self, room_width, room_height, g):
         old_vel = V2(self.vel)
         hit = False
 
@@ -116,14 +116,17 @@ class Ball(Body):
             self.play_collision_sound((self.vel - old_vel).length())
             hit = True
 
-        if self.pos.y < self.radius:
+        if self.pos.y < self.radius and self.vel.y < 0:
+            # correct velocity by removing energy gained between actual collision and collision detection
+            ke = self.vel.y ** 2 - 2 * g * (self.radius - self.pos.y)
+            self.vel.y = -(abs(ke) ** 0.5)
             self.vel.y *= -self.elasticity
             self.pos.y = self.radius
             hit = True
-        elif self.pos.y > room_height - self.radius:
-            self.vel.y *= -self.elasticity
-            self.pos.y = room_height - self.radius
-            hit = True
+        # elif self.pos.y > room_height - self.radius:
+        #     self.vel.y *= -self.elasticity
+        #     self.pos.y = room_height - self.radius
+        #     hit = True
 
         if hit:
             self.play_collision_sound((self.vel - old_vel).length())
@@ -152,7 +155,7 @@ class Simulation:
         self.room_width, self.room_height = room_dimensions
         self.bodies = bodies
 
-        self.g = 9.8
+        self.g = 0.0 # 9.8
 
     def draw(self, screen):
         px_per_m = screen.get_width() / self.room_width
@@ -160,11 +163,16 @@ class Simulation:
             body.draw(screen, px_per_m)
 
     def physics_step(self, time_step):
+        # apply velocities
+        for body in self.bodies:
+            if not body.fixed:
+                body.apply_vel(time_step)
+
         # gravity and wall collisions
         for body in self.bodies:
             if not body.fixed:
                 body.apply_gravity(self.g, time_step)
-                if body.collide_walls(self.room_width, self.room_height):
+                if body.collide_walls(self.room_width, self.room_height, self.g):
                     Body.collision_count += 1
                     print(Body.collision_count)
 
@@ -174,10 +182,10 @@ class Simulation:
                 Body.collision_count += 1
                 print(Body.collision_count)
 
-        # apply velocities
-        for body in self.bodies:
-            if not body.fixed:
-                body.apply_vel(time_step)
+        # # apply velocities
+        # for body in self.bodies:
+        #     if not body.fixed:
+        #         body.apply_vel(time_step)
 
 
 def get_screen(resolution):
@@ -189,19 +197,19 @@ def get_simulation():
     room_dimensions = (8, 6)
     bodies = []
 
-    for _ in range(10):
-        pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
-        vel = (8 * (random() - 0.5), 0)
-        mass = randint(2, 15)
-        radius = mass ** (1 / 3) * 0.1
-        elas = 0.90  # 0.85 + 0.14 * random()
-        bodies.append(Ball(pos, vel, mass, radius, elasticity=elas))
+    # for _ in range(1):
+    #     pos = (1 + random() * (room_dimensions[0] - 2), 1 + random() * (room_dimensions[1] - 2))
+    #     vel = (8 * (random() - 0.5), 0)
+    #     mass = randint(2, 15)
+    #     radius = mass ** (1 / 3) * 0.1
+    #     elas = 0.80  # 0.85 + 0.14 * random()
+    #     bodies.append(Ball(pos, vel, mass, radius, elasticity=elas))
     # bodies.append(Platform((1, 1), (2, 0.5)))
 
-    # r = 100
-    # # bodies.append(Ball((4, 2), (0, 0), r, 0.50))
-    # bodies.append(Ball((4, 4), (0, 0), 1, 0.10))
-    # bodies.append(Ball((4, 5), (0, -1), r, 0.50))
+    r = 10 ** (2 * 5)
+    # bodies.append(Ball((4, 2), (0, 0), r, 0.50))
+    bodies.append(Ball((4, 0.75), (0, 0), 1, 0.50))
+    bodies.append(Ball((4, 2), (0, -0.01), r, 0.50))
 
     # n = 10
     # for i in range(n):
